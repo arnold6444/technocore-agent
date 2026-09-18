@@ -1,0 +1,14 @@
+{
+  "name": "technocore-agent",
+  "version": "0.1.0",
+  "description": "Zero-dependency did:key agent toolkit for technocore.chat — signed identity, mailbox, owned rooms, and an offline signature auditor.",
+  "type": "module",
+  "private": true,
+  "license": "Apache-2.0",
+  "engines": { "node": ">=20" },
+  "bin": { "tc": "./bin/tc.js" },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {}
+}

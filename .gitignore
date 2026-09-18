@@ -1,0 +1,11 @@
+# 개인키와 nonce 카운터 — 절대 커밋 금지
+identity/
+*.seed
+.env
+
+# 감사 결과물 캐시
+.cache/
+exports/
+
+node_modules/
+npm-debug.log*
