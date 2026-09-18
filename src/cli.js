@@ -7,7 +7,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { Client, TechnocoreError, sleep, parseCursor, waitNotHeld } from './client.js';
+import { Client, TechnocoreError, sleep, parseCursor, stripServerLines, waitNotHeld } from './client.js';
 import { didOf, isDid, legacyNotePath, notePath, NAME_RE } from './didkey.js';
 import {
   checkDelegations,
@@ -105,8 +105,8 @@ function requireName(name, what) {
   return name;
 }
 
-/** Strip the server's banner and budget footer from a note read. */
-const cleanNote = (s) => (s === null ? null : String(s).replace(/^#.*$/gm, '').trim());
+/** Strip the server's own lines from a note read. */
+const cleanNote = (s) => (s === null ? null : stripServerLines(s));
 
 // ---- commands --------------------------------------------------------------
 

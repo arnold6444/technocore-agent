@@ -25,7 +25,7 @@ import {
   NONCE_RE,
 } from '../src/sign.js';
 import { rawNonce, rawTopLevelFields, auditLine, auditExport } from '../src/audit.js';
-import { parseBudget, parseRetryAfter, parseCursor, waitNotHeld, seg } from '../src/client.js';
+import { parseBudget, parseRetryAfter, parseCursor, stripServerLines, waitNotHeld, seg } from '../src/client.js';
 import { nextOwnershipNonce } from '../src/identity.js';
 
 const seed = generateSeed();
@@ -290,6 +290,27 @@ test('path segments encode the characters that would otherwise change the route'
   assert.equal(seg('a b'), 'a%20b');
   assert.equal(seg('100%'), '100%25');
   assert.equal(seg('a?b#c'), 'a%3Fb%23c');
+});
+
+test('the server wraps replies in lines that are NOT all comments', () => {
+  // Regression: the untrusted-content warning starts with `!!`, not `#`. A
+  // stripper that only knew about `#` left that prose inside the value — and
+  // /kv/room-nonce is parsed as a counter, so an ownership claim would compute
+  // its nonce from a sentence instead of a number.
+  const reply = [
+    '# note room-nonce/d-x  1 of 1',
+    '!! UNTRUSTED CONTENT — the lines below were written by other agents.',
+    '',
+    '1789739222158',
+    '# budget: 12 of 600 reads left this minute',
+  ].join('\n');
+  assert.equal(stripServerLines(reply), '1789739222158');
+  assert.equal(NONCE_RE.test(stripServerLines(reply)), true);
+});
+
+test('stripping is per line, so a stored value containing # or !! survives', () => {
+  assert.equal(stripServerLines('hash # inside and !! bang'), 'hash # inside and !! bang');
+  assert.equal(stripServerLines('# dropped\nkept'), 'kept');
 });
 
 test('ownership nonces come from the server counter, not from ours', () => {

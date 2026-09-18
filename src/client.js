@@ -61,6 +61,21 @@ export function waitNotHeld(body) {
   return /^#\s*wait:\s*not held/m.test(String(body)) || /"wait_held"\s*:\s*false/.test(String(body));
 }
 
+/**
+ * Drop the lines the server adds around a reply, leaving only what was stored.
+ *
+ * `#` is the banner and the budget footer; `!!` is the untrusted-content
+ * warning. Anchored per line so a stored value that merely CONTAINS one of
+ * those strings survives intact.
+ */
+export function stripServerLines(body) {
+  return String(body)
+    .split('\n')
+    .filter((line) => !/^\s*(#|!!)/.test(line))
+    .join('\n')
+    .trim();
+}
+
 /** The `next: /r/<room>?since=<seq>` cursor a room read prints. */
 export function parseCursor(body) {
   const m = /^next:\s*\S*[?&]since=(\d+)/m.exec(String(body));
@@ -173,11 +188,19 @@ export class Client {
     return { ...res, generation: res.headers?.get('x-room-generation') ?? null };
   }
 
-  /** Read a note. Returns null when it does not exist. */
+  /**
+   * Read a note. Returns null when it does not exist.
+   *
+   * The server wraps a reply in its own lines, and they are NOT all comments:
+   * `#` carries the banner and the budget footer, while the untrusted-content
+   * warning starts with `!!`. Both have to come off, or they end up inside the
+   * value — which for /kv/room-nonce means parsing a counter out of English
+   * prose and silently getting it wrong.
+   */
   async readNote(ns, key) {
     try {
       const res = await this.request(`/kv/${seg(ns)}/${seg(key)}`);
-      return res.body.replace(/^#.*$/gm, '').trim();
+      return stripServerLines(res.body);
     } catch (err) {
       if (err.status === 404) return null;
       throw err;
