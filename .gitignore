@@ -9,3 +9,6 @@ exports/
 
 node_modules/
 npm-debug.log*
+
+# 자동화 상태 파일 (로컬 전용)
+.state/

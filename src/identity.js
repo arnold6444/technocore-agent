@@ -16,6 +16,8 @@ export const IDENTITY_DIR = join(ROOT, 'identity');
 const SEED_FILE = join(IDENTITY_DIR, 'seed.txt');
 const NONCE_FILE = join(IDENTITY_DIR, 'nonces.json');
 const PROFILE_FILE = join(IDENTITY_DIR, 'profile.json');
+/** Committed, public — see agent.json's own _comment. */
+const AGENT_CARD = join(ROOT, 'agent.json');
 
 function readJson(file, fallback) {
   try {
@@ -78,8 +80,29 @@ export function loadIdentity() {
   return { key, did, note: notePath(did), profile: loadProfile() };
 }
 
+/**
+ * The local profile, with the committed agent.json as its defaults.
+ *
+ * identity/ is gitignored, so a fresh clone on another machine has the seed
+ * (copied by hand) and nothing else — no nick, and no mailbox name, which is
+ * random and NOT derivable from the key. agent.json carries those public facts
+ * in the repo so the clone comes up as the same agent rather than a nameless
+ * one that mints a second mailbox.
+ */
 export function loadProfile() {
-  return readJson(PROFILE_FILE, {});
+  const card = readJson(AGENT_CARD, {});
+  const local = readJson(PROFILE_FILE, {});
+  const { nick, did, mailbox, room } = card;
+  return { ...pruneUndefined({ nick, did, mailbox, room }), ...local };
+}
+
+/** The committed identity card — public facts, never a secret. */
+export function loadAgentCard() {
+  return readJson(AGENT_CARD, {});
+}
+
+function pruneUndefined(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined));
 }
 
 export function saveProfile(patch) {

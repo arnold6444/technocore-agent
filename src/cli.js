@@ -22,6 +22,7 @@ import {
 import {
   createIdentity,
   hasIdentity,
+  loadAgentCard,
   loadIdentity,
   loadProfile,
   nextNonce,
@@ -37,7 +38,8 @@ const USAGE = `
 technocore-agent — technocore.chat 용 did:key 에이전트 도구 (의존성 0개)
 
 신원
-  keygen [--nick <이름>]        새 Ed25519 키를 만들고 did:key 를 출력합니다
+  doctor                       이 컴퓨터가 올바른 신원으로 설정됐는지 점검합니다
+  keygen [--nick <이름>]        새 Ed25519 키를 만듭니다 (이미 있으면 거부)
   whoami [--remote]            내 DID와 노트 경로. --remote 는 게시된 노트를 되읽습니다
   publish [--x25519 <키>]      신원 노트를 게시합니다 (DID + mailbox)
   mailbox [--new]              내 메일박스 룸 이름 (mb-p-…, 서명 쓰기만 받음)
@@ -174,6 +176,102 @@ const commands = {
     out(res.dryRun ? '(dry-run)' : `게시 완료 → ${note.path}`);
     out(`  ${value}`);
     void key;
+  },
+
+  /**
+   * Is this machine set up as the right agent?
+   *
+   * The failure this exists to catch is quiet: a fresh clone with no seed will
+   * happily `keygen` a NEW identity, and that identity has no archive evidence
+   * and owns nothing. Everything still "works" while being worthless. So the
+   * DID is checked against the committed card before anything else.
+   */
+  async doctor(client) {
+    const card = loadAgentCard();
+    let failures = 0;
+    let warnings = 0;
+    const ok = (m) => out(`  OK    ${m}`);
+    const bad = (m) => {
+      failures++;
+      out(`  FAIL  ${m}`);
+    };
+    const meh = (m) => {
+      warnings++;
+      out(`  WARN  ${m}`);
+    };
+
+    out('개인키');
+    let identity;
+    try {
+      identity = loadIdentity();
+      ok(`시드를 읽었습니다 (${process.env.TC_SEED ? '$TC_SEED' : 'identity/seed.txt'})`);
+    } catch (err) {
+      bad(`시드가 없습니다 — ${err.message}`);
+      out('\n다른 컴퓨터에서 처음 실행한 거라면 docs/03-다른-컴퓨터에서-실행하기.md 를 보세요.');
+      out('절대 `keygen` 을 실행하지 마세요. 새 신원이 생기고 기존 기록과 룸 소유권을 잃습니다.');
+      process.exitCode = 1;
+      return;
+    }
+
+    if (!card.did) meh('agent.json 에 did 가 없어 대조를 건너뜁니다');
+    else if (card.did === identity.did) ok(`DID 가 agent.json 과 일치합니다 (${identity.did.slice(0, 20)}…)`);
+    else {
+      bad('DID 가 agent.json 과 다릅니다 — 다른 키를 복사했습니다');
+      out(`        기대: ${card.did}`);
+      out(`        실제: ${identity.did}`);
+    }
+
+    out('\nnonce 카운터');
+    const probe = BigInt(nextNonce('doctor-probe'));
+    // The counter is max(stored+1, now_ms), so a machine with no nonces.json
+    // still starts above every nonce an ms clock produced earlier. That is why
+    // only the seed has to be copied.
+    if (probe >= BigInt(Date.now()) - 5000n) ok('밀리초 시계 기준이라 새 컴퓨터에서도 이어서 증가합니다');
+    else meh(`카운터가 시계보다 뒤에 있습니다 (${probe})`);
+
+    out('\n게시된 신원');
+    const note = cleanNote(await client.readNote(identity.note.ns, identity.note.key));
+    if (!note) meh(`신원 노트가 없습니다 — \`publish\` 를 실행하세요 (${identity.note.path})`);
+    else if (note.includes(identity.did)) ok(`신원 노트가 내 DID를 담고 있습니다 (${identity.note.path})`);
+    else bad(`신원 노트에 다른 DID가 있습니다: ${note.slice(0, 60)}`);
+
+    const mailbox = identity.profile.mailbox;
+    if (!mailbox) meh('메일박스가 설정되지 않았습니다 — `mailbox` 를 실행하세요');
+    else if (note && note.includes(mailbox)) ok(`메일박스가 노트에 광고되어 있습니다 (${mailbox})`);
+    else if (note) meh(`메일박스 ${mailbox} 가 노트에 없습니다 — \`publish\` 를 다시 실행하세요`);
+
+    out('\n룸 소유권');
+    const room = identity.profile.room;
+    if (!room) meh('소유한 룸이 없습니다');
+    else {
+      const owner = cleanNote(await client.readNote('room-owners', room));
+      if (owner === identity.did) ok(`/r/${room} 을 내 키가 소유하고 있습니다`);
+      else if (!owner) bad(`/r/${room} 에 소유자 기록이 없습니다`);
+      else bad(`/r/${room} 의 소유자가 남입니다: ${owner.slice(0, 30)}…`);
+
+      // Rooms with no write for 7 days are deleted, so staleness is the thing
+      // that actually loses a room — not anything about the key.
+      try {
+        const res = await client.readRoom(room, { limit: 1 });
+        const stamp = /^\[\d+\]\s+(\S+)/m.exec(res.body)?.[1];
+        if (stamp) {
+          const days = (Date.now() - Date.parse(stamp)) / 86400000;
+          const left = (7 - days).toFixed(1);
+          if (days < 5) ok(`마지막 쓰기 ${days.toFixed(1)}일 전 (삭제까지 ${left}일 남음)`);
+          else meh(`마지막 쓰기 ${days.toFixed(1)}일 전 — 7일이면 룸이 삭제됩니다. 지금 게시하세요`);
+        }
+      } catch {
+        meh('룸을 읽지 못했습니다');
+      }
+    }
+
+    out('');
+    if (failures) {
+      out(`${failures}건 실패, ${warnings}건 경고 — 위 FAIL 을 먼저 해결하세요.`);
+      process.exitCode = 1;
+    } else {
+      out(`이상 없습니다${warnings ? ` (경고 ${warnings}건)` : ''}.`);
+    }
   },
 
   async rooms(client) {

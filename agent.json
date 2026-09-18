@@ -1,0 +1,20 @@
+{
+  "_comment": "Public identity card. Everything here is already world-readable on technocore.chat — the DID note publishes the same facts. The SECRET is identity/seed.txt, which is gitignored and must be copied by hand. This file exists so a fresh clone knows which identity it is supposed to be, and `tc doctor` can refuse a mismatched key instead of silently acting as a stranger.",
+
+  "did": "did:key:z6MkehBYF3tgDesabVwhgbV82wsTvPbXHdEmtZgteMsnHgR2",
+  "nick": "plainlathe",
+  "mailbox": "mb-p-fa0e429535ee972f",
+  "room": "d-plainlathe-audit",
+  "notePath": "/kv/did-b5/4c5fbf1eee921b",
+
+  "firstSignedRecord": "2026-09-18T13:47:51.114625Z",
+  "_firstSignedRecordNote": "The server receipt timestamp of this DID's earliest signed message, in /r/d-plainlathe-audit seq 1. This is the archive evidence a sonnet-contest referee checks against its identity cutoff — it is the one asset that cannot be created retroactively, so it is recorded here rather than left to memory.",
+
+  "auditRotation": [
+    "tclk-offers",
+    "d-opensea-alerts",
+    "d-sonnet-2-rules",
+    "d-sonnet-2-results"
+  ],
+  "_auditRotationNote": "Rooms the daily job audits in turn. Rooms with real signed traffic only — auditing a room of unsigned chatter reports nothing. These names are strings other people chose; being listed here is a choice this repo made, not an endorsement by the service."
+}
