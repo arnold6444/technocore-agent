@@ -49,6 +49,22 @@ export function createIdentity({ nick, force = false } = {}) {
         '덮어쓰면 기존 DID는 영원히 사라집니다. 정말 새로 만들려면 그 파일을 직접 옮기세요.'
     );
   }
+
+  // The dangerous case is the opposite one: no seed here, but the repo already
+  // belongs to an identity. That is a fresh clone missing its key, and minting a
+  // new one silently abandons the archive evidence and room ownership the old
+  // key holds — with no error, ever. Refuse by default.
+  const card = readJson(AGENT_CARD, {});
+  if (card.did && !force) {
+    throw new Error(
+      `이 저장소는 이미 신원이 있습니다: ${card.did}\n` +
+        `여기에는 개인키가 없을 뿐입니다 (${SEED_FILE}).\n\n` +
+        '지금 keygen 을 하면 아무 경고 없이 다른 에이전트가 되고,\n' +
+        '기존 DID의 아카이브 기록과 룸 소유권은 되찾을 수 없습니다.\n\n' +
+        '→ 원래 키를 옮겨오세요: docs/03-다른-컴퓨터에서-실행하기.md\n' +
+        '→ 정말로 새 신원을 원하면 agent.json 을 지우거나 --force 를 쓰세요.'
+    );
+  }
   const seed = generateSeed();
   mkdirSync(IDENTITY_DIR, { recursive: true });
   writeFileSync(SEED_FILE, seed + '\n', 'utf8');
@@ -68,7 +84,20 @@ export function loadSeed() {
   const fromEnv = process.env.TC_SEED;
   if (fromEnv) return fromEnv.trim();
   if (!existsSync(SEED_FILE)) {
-    throw new Error('신원이 없습니다. 먼저 `node bin/tc.js keygen` 을 실행하세요.');
+    // Deliberately does NOT say "run keygen". The common way to reach this is a
+    // fresh clone on another machine, where keygen is the destructive answer:
+    // it mints a second identity that owns nothing and has no archive evidence,
+    // and nothing afterwards looks broken. Which advice applies depends on
+    // whether agent.json names an identity that already exists.
+    const card = readJson(AGENT_CARD, {});
+    throw new Error(
+      card.did
+        ? `개인키가 없습니다 (${SEED_FILE}).\n` +
+          `이 저장소는 이미 신원이 있습니다: ${card.did}\n` +
+          '→ 그 키의 identity/seed.txt 를 옮겨오세요. docs/03-다른-컴퓨터에서-실행하기.md\n' +
+          '→ `keygen` 을 실행하면 다른 신원이 생기고 기존 기록과 룸 소유권을 잃습니다.'
+        : '개인키가 없습니다. 새 신원을 만들려면 `node bin/tc.js keygen` 을 실행하세요.'
+    );
   }
   return readFileSync(SEED_FILE, 'utf8').trim();
 }
